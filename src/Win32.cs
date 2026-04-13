@@ -55,6 +55,7 @@ internal static partial class Win32
     public const uint WM_KILLFOCUS     = 0x0008;
     public const uint WM_PAINT         = 0x000F;
     public const uint WM_CLOSE         = 0x0010;
+    public const uint WM_DRAWITEM      = 0x002B;
     public const uint WM_SETFONT       = 0x0030;
     public const uint WM_TIMER         = 0x0113;
     public const uint WM_LBUTTONDOWN   = 0x0201;
@@ -63,6 +64,9 @@ internal static partial class Win32
     public const uint WM_SYSCOMMAND    = 0x0112;
     public const uint WM_GETMINMAXINFO = 0x0024;
     public const uint WM_NCHITTEST     = 0x0084;
+    public const uint WM_CTLCOLOREDIT  = 0x0133;
+    public const uint WM_CTLCOLORBTN   = 0x0135;
+    public const uint WM_CTLCOLORSTATIC = 0x0138;
 
     // WM_ACTIVATE wParam values
     public const uint WA_INACTIVE = 0;
@@ -83,6 +87,7 @@ internal static partial class Win32
 
     // Button styles
     public const uint BS_AUTOCHECKBOX = 0x00000003;
+    public const uint BS_OWNERDRAW    = 0x0000000B;
 
     // Static styles
     public const uint SS_CENTER = 0x00000001;
@@ -285,6 +290,20 @@ internal static partial class Win32
         public uint yHotspot;
         public nint hbmMask;    // monochrome mask bitmap
         public nint hbmColor;   // color bitmap
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DRAWITEMSTRUCT
+    {
+        public uint CtlType;
+        public uint CtlID;
+        public uint itemID;
+        public uint itemAction;
+        public uint itemState;
+        public nint hwndItem;
+        public nint hDC;
+        public RECT rcItem;
+        public nint itemData;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -568,6 +587,9 @@ internal static partial class Win32
     [LibraryImport("user32.dll")]
     public static partial int FillRect(nint hDC, in RECT lprc, nint hbr);
 
+    [LibraryImport("user32.dll")]
+    public static partial int FrameRect(nint hDC, in RECT lprc, nint hbr);
+
     [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]
     public static partial int DrawTextW(nint hdc, string lpchText, int cchText, ref RECT lprc, uint format);
 
@@ -722,6 +744,29 @@ internal static partial class Win32
 
     [LibraryImport("gdi32.dll")]
     public static partial int D3DKMTQueryVideoMemoryInfo(ref D3DKMT_QUERYVIDEOMEMORYINFO pData);
+
+    // ── comdlg32.dll — ChooseColor ───────────────────────────────────────────
+
+    public const uint CC_RGBINIT  = 0x00000001;
+    public const uint CC_FULLOPEN = 0x00000002;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct CHOOSECOLOR
+    {
+        public uint  lStructSize;
+        public nint  hwndOwner;
+        public nint  hInstance;
+        public uint  rgbResult;     // COLORREF — in/out
+        public uint* lpCustColors;  // pointer to 16 COLORREFs
+        public uint  Flags;
+        public nint  lCustData;
+        public nint  lpfnHook;
+        public nint  lpTemplateName;
+    }
+
+    [LibraryImport("comdlg32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static unsafe partial bool ChooseColorW(CHOOSECOLOR* lpcc);
 
     // ── shell32.dll ──────────────────────────────────────────────────────────
 

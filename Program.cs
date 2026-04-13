@@ -236,11 +236,17 @@ internal static unsafe class Program
             App.SharedDC = 0;
         }
 
-        if (Brushes.Bg     != 0) Win32.DeleteObject(Brushes.Bg);
-        if (Brushes.Green  != 0) Win32.DeleteObject(Brushes.Green);
-        if (Brushes.Yellow != 0) Win32.DeleteObject(Brushes.Yellow);
-        if (Brushes.Red    != 0) Win32.DeleteObject(Brushes.Red);
-        if (Brushes.Blue   != 0) Win32.DeleteObject(Brushes.Blue);
-        if (Brushes.Font   != 0) Win32.DeleteObject(Brushes.Font);
+        // GPU slot in ByMonitor aliases GpuUtil — skip it to avoid a double-free.
+        for (int i = 0; i < Brushes.ByMonitor.Length; i++)
+            if (i != Config.GPU && Brushes.ByMonitor[i] != 0)
+                Win32.DeleteObject(Brushes.ByMonitor[i]);
+        if (Brushes.GpuUtil   != 0) Win32.DeleteObject(Brushes.GpuUtil);
+        if (Brushes.GpuMem    != 0) Win32.DeleteObject(Brushes.GpuMem);
+        if (Brushes.GpuBlend  != 0) Win32.DeleteObject(Brushes.GpuBlend);
+        if (Brushes.TabBg     != 0) Win32.DeleteObject(Brushes.TabBg);
+        if (Brushes.TabActive != 0) Win32.DeleteObject(Brushes.TabActive);
+        if (Brushes.Accent    != 0) Win32.DeleteObject(Brushes.Accent);
+        if (Brushes.Bg        != 0) Win32.DeleteObject(Brushes.Bg);
+        if (Brushes.Font      != 0) Win32.DeleteObject(Brushes.Font);
     }
 }

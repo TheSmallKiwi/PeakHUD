@@ -49,10 +49,14 @@ internal static unsafe class GpuMonitor
         _prevTick = now;
         if (deltaTick == 0) return 0f;
 
-        ulong ticksPerNode  = deltaTick * 10_000UL;
-        ulong totalBusy     = 0;
-        ulong totalCapacity = 0;
+        // Capacity per engine over the elapsed interval (100-ns ticks).
+        ulong capacity = deltaTick * 10_000UL;
+        if (capacity == 0) return 0f;
 
+        // Task Manager shows the MAX busy engine, not the average. A GPU with
+        // 16 nodes (3D / Copy / Video Decode / Video Encode / Compute / ...)
+        // where only the 3D engine is pegged would otherwise read as ~6%.
+        double maxPct = 0;
         for (int i = 0; i < _nodes.Length; i++)
         {
             ulong cur  = QueryRunningTime(ref _nodes[i]);
@@ -60,12 +64,12 @@ internal static unsafe class GpuMonitor
                 ? cur - _nodes[i].PrevRunningTime
                 : 0;
             _nodes[i].PrevRunningTime = cur;
-            totalBusy     += busy;
-            totalCapacity += ticksPerNode;
+
+            double pct = (double)busy / capacity * 100.0;
+            if (pct > maxPct) maxPct = pct;
         }
 
-        if (totalCapacity == 0) return 0f;
-        return (float)Math.Clamp((double)totalBusy / totalCapacity * 100.0, 0.0, 100.0);
+        return (float)Math.Clamp(maxPct, 0.0, 100.0);
     }
 
     public static float ReadMemory()

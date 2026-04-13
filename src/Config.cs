@@ -10,6 +10,8 @@ internal struct MonitorConfig
     public int    UpdateRateMs;
     public bool   ShowLabel;
     public long   MaxBytesPerSec;  // disk and network only; 0 = not applicable
+    public uint   Color;           // 0x00RRGGBB, primary bar (util for GPU)
+    public uint   ColorSecondary;  // 0x00RRGGBB, secondary bar (memory for GPU; unused elsewhere)
 }
 
 internal static class Config
@@ -30,6 +32,19 @@ internal static class Config
 
     // ── Defaults ─────────────────────────────────────────────────────────────
 
+    // Default per-monitor primary colors (0x00RRGGBB).
+    public static readonly uint[] DefaultColors =
+    [
+        0x00_50BEFF, // CPU     — light blue (80, 190, 255)
+        0x00_2859DC, // RAM     — dark blue  (40,  89, 220)
+        0x00_50C864, // DISK    — green      (80, 200, 100)
+        0x00_FF6E6E, // NETWORK — light red  (255,110, 110)
+        0x00_50BEFF, // GPU     — light blue util (same as CPU)
+    ];
+
+    // Default secondary colors; only GPU uses this slot (memory bar).
+    public const uint DefaultGpuMemColor = 0x00_B446DC; // purple (180, 70, 220)
+
     private static void ApplyDefaults()
     {
         for (int i = 0; i < COUNT; i++)
@@ -38,9 +53,12 @@ internal static class Config
             Monitors[i].UpdateRateMs = 1000;
             Monitors[i].ShowLabel    = true;
             Monitors[i].MaxBytesPerSec = 0;
+            Monitors[i].Color        = DefaultColors[i];
+            Monitors[i].ColorSecondary = 0;
         }
         Monitors[DISK   ].MaxBytesPerSec = 524_288_000L;  // 500 MB/s
         Monitors[NETWORK].MaxBytesPerSec = 131_072_000L;  // 125 MB/s (1 Gb link)
+        Monitors[GPU    ].ColorSecondary = DefaultGpuMemColor;
     }
 
     // ── Path resolution ───────────────────────────────────────────────────────
@@ -112,6 +130,22 @@ internal static class Config
                     if (long.TryParse(value, out long max))
                         Monitors[section].MaxBytesPerSec = max;
                     break;
+                case "color":
+                {
+                    string hex = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? value[2..] : value;
+                    if (uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber,
+                                      System.Globalization.CultureInfo.InvariantCulture, out uint rgb))
+                        Monitors[section].Color = rgb & 0x00FFFFFFu;
+                    break;
+                }
+                case "color_secondary":
+                {
+                    string hex = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? value[2..] : value;
+                    if (uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber,
+                                      System.Globalization.CultureInfo.InvariantCulture, out uint rgb))
+                        Monitors[section].ColorSecondary = rgb & 0x00FFFFFFu;
+                    break;
+                }
             }
         }
     }
@@ -129,6 +163,9 @@ internal static class Config
             sb.AppendLine($"show_label={Monitors[i].ShowLabel.ToString().ToLowerInvariant()}");
             if (Monitors[i].MaxBytesPerSec > 0)
                 sb.AppendLine($"max_bytes_per_sec={Monitors[i].MaxBytesPerSec}");
+            sb.AppendLine($"color=0x{Monitors[i].Color:X6}");
+            if (Monitors[i].ColorSecondary != 0)
+                sb.AppendLine($"color_secondary=0x{Monitors[i].ColorSecondary:X6}");
             sb.AppendLine();
         }
         File.WriteAllText(GetConfigPath(), sb.ToString());

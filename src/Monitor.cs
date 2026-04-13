@@ -38,25 +38,37 @@ internal unsafe struct MonitorState
 internal static class Brushes
 {
     public static nint Bg;       // RGB(28,28,28) — icon background
-    public static nint Green;    // CPU < 50%
-    public static nint Yellow;   // CPU 50–74%
-    public static nint Red;      // CPU >= 75%
-    public static nint Blue;     // GPU memory
+
+    // Per-monitor fixed color, indexed by Config.CPU / RAM / DISK / NETWORK / GPU.
+    // GPU's slot holds the primary (util) color; the memory bar uses GpuMem.
+    public static nint[] ByMonitor = new nint[Config.COUNT];
+
+    // GPU dual-bar palette — light blue × purple, blending to periwinkle.
+    public static nint GpuUtil;  // RGB( 80, 190, 255) — light blue (same as CPU)
+    public static nint GpuMem;   // RGB(180,  70, 220) — purple
+    public static nint GpuBlend; // RGB(130, 130, 237) — periwinkle (overlap)
+
     public static nint Font;     // shared HFONT for icon labels + popup text
 
-    // Popup-specific
-    public static nint TabBg;    // inactive tab background  (COLOR_BTNFACE)
-    public static nint TabActive;// active tab background    (COLOR_WINDOW)
-    public static nint Accent;   // 2px underline on active tab (COLOR_HIGHLIGHT)
-    public static nint TextBg;   // popup content background (COLOR_WINDOW)
+    // Popup chrome (charcoal palette)
+    public static nint TabBg;    // inactive tab background
+    public static nint TabActive;// active tab background / content separator
+    public static nint Accent;   // 2px underline on active tab
 
     public static void Init()
     {
-        Bg     = Win32.CreateSolidBrush(Win32.RGB(28,  28,  28));
-        Green  = Win32.CreateSolidBrush(Win32.RGB(0,   205, 0));
-        Yellow = Win32.CreateSolidBrush(Win32.RGB(255, 220, 0));
-        Red    = Win32.CreateSolidBrush(Win32.RGB(255, 69,  0));
-        Blue   = Win32.CreateSolidBrush(Win32.RGB(30,  144, 255));
+        Bg = Win32.CreateSolidBrush(Win32.RGB(28, 28, 28));
+
+        for (int i = 0; i < Config.COUNT; i++)
+            ByMonitor[i] = Win32.CreateSolidBrush(RgbToColorRef(Config.Monitors[i].Color));
+
+        // GPU palette — util is the ByMonitor[GPU] alias; memory comes from
+        // Config.Monitors[GPU].ColorSecondary; blend is the computed RGB midpoint.
+        GpuUtil  = ByMonitor[Config.GPU];
+        GpuMem   = Win32.CreateSolidBrush(RgbToColorRef(Config.Monitors[Config.GPU].ColorSecondary));
+        GpuBlend = Win32.CreateSolidBrush(RgbToColorRef(
+            BlendRgb(Config.Monitors[Config.GPU].Color,
+                     Config.Monitors[Config.GPU].ColorSecondary)));
 
         // 13px "Trebuchet MS" — same face as the original WinForms label bitmap
         Font = Win32.CreateFontW(
@@ -69,20 +81,71 @@ internal static class Brushes
             0,
             "Trebuchet MS");
 
-        // Popup brushes — system colors so they respect light/dark mode
-        TabBg    = Win32.GetSysColorBrush(15); // COLOR_BTNFACE
-        TabActive= Win32.GetSysColorBrush(Win32.COLOR_WINDOW);
-        Accent   = Win32.GetSysColorBrush(Win32.COLOR_HIGHLIGHT);
-        TextBg   = Win32.GetSysColorBrush(Win32.COLOR_WINDOW);
+        // Popup chrome — charcoal palette (matches icon background).
+        TabBg     = Win32.CreateSolidBrush(Win32.RGB(20,  20,  20));   // inactive tab
+        TabActive = Win32.CreateSolidBrush(Win32.RGB(40,  40,  40));   // active tab / content
+        Accent    = Win32.CreateSolidBrush(Win32.RGB(80, 190, 255));   // underline on active tab
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static nint ForValue(float pct) => pct switch
+    // Replace a single monitor's primary brush with a new RGB color. Caller must
+    // update Config.Monitors[index].Color and invalidate any windows that depend
+    // on the brush afterwards.
+    public static void SetMonitorColor(int index, uint rgb)
     {
-        < 50f => Green,
-        < 75f => Yellow,
-        _     => Red
-    };
+        if (index < 0 || index >= ByMonitor.Length) return;
+
+        nint old = ByMonitor[index];
+        nint fresh = Win32.CreateSolidBrush(RgbToColorRef(rgb));
+        ByMonitor[index] = fresh;
+
+        // GPU slot aliases GpuUtil — keep the alias in sync and recompute the blend.
+        if (index == Config.GPU)
+        {
+            GpuUtil = fresh;
+            RebuildGpuBlend();
+        }
+
+        if (old != 0) Win32.DeleteObject(old);
+    }
+
+    // Replace the GPU memory brush and recompute the overlap blend.
+    public static void SetGpuMemColor(uint rgb)
+    {
+        nint old = GpuMem;
+        GpuMem = Win32.CreateSolidBrush(RgbToColorRef(rgb));
+        RebuildGpuBlend();
+        if (old != 0) Win32.DeleteObject(old);
+    }
+
+    private static void RebuildGpuBlend()
+    {
+        uint blend = BlendRgb(
+            Config.Monitors[Config.GPU].Color,
+            Config.Monitors[Config.GPU].ColorSecondary);
+        nint old = GpuBlend;
+        GpuBlend = Win32.CreateSolidBrush(RgbToColorRef(blend));
+        if (old != 0) Win32.DeleteObject(old);
+    }
+
+    // RGB midpoint of two 0x00RRGGBB values.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint BlendRgb(uint a, uint b)
+    {
+        uint ar = (a >> 16) & 0xFF, ag = (a >> 8) & 0xFF, ab = a & 0xFF;
+        uint br = (b >> 16) & 0xFF, bg = (b >> 8) & 0xFF, bb = b & 0xFF;
+        return (((ar + br) >> 1) << 16) | (((ag + bg) >> 1) << 8) | ((ab + bb) >> 1);
+    }
+
+    // Convert 0x00RRGGBB (stored) to GDI COLORREF 0x00BBGGRR (byte-order-swapped).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint RgbToColorRef(uint rgb)
+    {
+        byte r = (byte)((rgb >> 16) & 0xFF);
+        byte g = (byte)((rgb >>  8) & 0xFF);
+        byte b = (byte)( rgb        & 0xFF);
+        return Win32.RGB(r, g, b);
+    }
+
 }
 
 // ── MonitorRenderer ──────────────────────────────────────────────────────────
@@ -149,7 +212,8 @@ internal static unsafe class MonitorRenderer
         Win32.FillRect(sharedDC, fullRect, Brushes.Bg);
 
         // Draw bar chart (10 bars across 32px)
-        bool isDual = m.ConfigIndex == Config.GPU;
+        bool isDual  = m.ConfigIndex == Config.GPU;
+        nint primary = Brushes.ByMonitor[m.ConfigIndex];
         float barW = MonitorState.IconSize / (float)MonitorState.HistoryLen;
         for (int i = 0; i < MonitorState.HistoryLen; i++)
         {
@@ -162,22 +226,28 @@ internal static unsafe class MonitorRenderer
 
             if (isDual)
             {
-                // Left half: GPU utilization; right half: GPU memory
-                int leftW = Math.Max(1, bw / 2);
-
-                int by = MonitorState.IconSize - (int)barH;
-                Win32.FillRect(sharedDC, new Win32.RECT(bx, by, bx + leftW, MonitorState.IconSize), Brushes.ForValue(val));
-
+                // Both bars draw at full width from the bottom. Overlap region
+                // (bottom up to the shorter bar's top) uses the blended color;
+                // the taller bar's exclusive top segment uses its own color.
                 float val2  = m.History2[(m.Head + i) % MonitorState.HistoryLen];
                 float barH2 = MonitorState.IconSize * (val2 / 100f);
                 if (barH2 < 1f) barH2 = 1f;
-                int by2 = MonitorState.IconSize - (int)barH2;
-                Win32.FillRect(sharedDC, new Win32.RECT(bx + leftW, by2, bx + bw, MonitorState.IconSize), Brushes.Blue);
+
+                int by1    = MonitorState.IconSize - (int)barH;   // util bar top
+                int by2    = MonitorState.IconSize - (int)barH2;  // memory bar top
+                int byBlend = Math.Max(by1, by2);                  // top of blended overlap
+
+                Win32.FillRect(sharedDC, new Win32.RECT(bx, byBlend, bx + bw, MonitorState.IconSize), Brushes.GpuBlend);
+
+                if (by1 < by2)
+                    Win32.FillRect(sharedDC, new Win32.RECT(bx, by1, bx + bw, byBlend), Brushes.GpuUtil);
+                else if (by2 < by1)
+                    Win32.FillRect(sharedDC, new Win32.RECT(bx, by2, bx + bw, byBlend), Brushes.GpuMem);
             }
             else
             {
                 int by = MonitorState.IconSize - (int)barH;
-                Win32.FillRect(sharedDC, new Win32.RECT(bx, by, bx + bw, MonitorState.IconSize), Brushes.ForValue(val));
+                Win32.FillRect(sharedDC, new Win32.RECT(bx, by, bx + bw, MonitorState.IconSize), primary);
             }
         }
 

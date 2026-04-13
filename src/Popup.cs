@@ -29,9 +29,15 @@ internal static unsafe class Popup
     private static nint _hLabelRate;    // "Update Rate" static label
     private static nint _hLabelMs;     // "ms" static label
     private static nint _hLabelIcon;   // "Icon Label" static label
+    private static nint _hLabelColor;  // "Bar Color(s)" static label
+    private static nint _hBtnColor;    // owner-drawn button: primary color (util)
+    private static nint _hBtnColor2;   // owner-drawn button: secondary color (GPU memory only)
 
     // Label child for the reading text (Monitor tab)
     private static nint _hReadingLabel;
+
+    // Charcoal text color used by all WM_CTLCOLOR* handlers.
+    private const uint TextLight = 0x00EEEEEE; // COLORREF (BBGGRR)
 
     // Registered class atom
     private static bool _classRegistered;
@@ -51,7 +57,7 @@ internal static unsafe class Popup
                 style         = 0,
                 lpfnWndProc   = &PopupWndProc,
                 hInstance     = hInstance,
-                hbrBackground = (nint)(Win32.COLOR_WINDOW + 1),
+                hbrBackground = Brushes.Bg,   // charcoal
                 lpszClassName = className
             };
             Win32.RegisterClassExW(&wc);
@@ -159,6 +165,28 @@ internal static unsafe class Popup
             Padding, sy, 240, 24,
             hwnd, (nint)1006, hInstance, 0);
         Win32.SendMessageW(_hCheckLabel, Win32.WM_SETFONT, hFont, 1);
+        sy += 34;
+
+        // Section label — "Bar Color"
+        _hLabelColor = Win32.CreateWindowExW(0, "STATIC", "Bar Color",
+            Win32.WS_CHILD,
+            Padding, sy, 200, 20,
+            hwnd, (nint)1007, hInstance, 0);
+        Win32.SendMessageW(_hLabelColor, Win32.WM_SETFONT, hFont, 1);
+        sy += 22;
+
+        // Owner-drawn color-picker buttons — primary (always) + secondary (GPU only)
+        _hBtnColor = Win32.CreateWindowExW(0, "BUTTON", "",
+            Win32.WS_CHILD | Win32.BS_OWNERDRAW,
+            Padding, sy, 80, 28,
+            hwnd, (nint)1008, hInstance, 0);
+        Win32.SendMessageW(_hBtnColor, Win32.WM_SETFONT, hFont, 1);
+
+        _hBtnColor2 = Win32.CreateWindowExW(0, "BUTTON", "",
+            Win32.WS_CHILD | Win32.BS_OWNERDRAW,
+            Padding + 92, sy, 80, 28,
+            hwnd, (nint)1009, hInstance, 0);
+        Win32.SendMessageW(_hBtnColor2, Win32.WM_SETFONT, hFont, 1);
     }
 
     // ── Tab management ───────────────────────────────────────────────────────
@@ -177,6 +205,12 @@ internal static unsafe class Popup
         Win32.ShowWindow(_hLabelMs,    settingsVis);
         Win32.ShowWindow(_hLabelIcon,  settingsVis);
         Win32.ShowWindow(_hCheckLabel, settingsVis);
+        Win32.ShowWindow(_hLabelColor, settingsVis);
+        Win32.ShowWindow(_hBtnColor,   settingsVis);
+
+        // Second swatch only visible for GPU (memory color).
+        bool showSecondary = tab == TAB_SETTINGS && App.PopupTarget == Config.GPU;
+        Win32.ShowWindow(_hBtnColor2, showSecondary ? Win32.SW_SHOW : Win32.SW_HIDE);
 
         Win32.InvalidateRect(hwnd, 0, true);
     }
@@ -216,6 +250,19 @@ internal static unsafe class Popup
                 Paint(hwnd);
                 return 0;
 
+            // Charcoal background for all child controls. Returning Brushes.Bg and
+            // setting matching SetBkColor makes STATIC/EDIT/BUTTON labels blend in.
+            case Win32.WM_CTLCOLORSTATIC:
+            case Win32.WM_CTLCOLOREDIT:
+            case Win32.WM_CTLCOLORBTN:
+                Win32.SetTextColor(wParam, TextLight);
+                Win32.SetBkColor(wParam, Win32.RGB(28, 28, 28));
+                return Brushes.Bg;
+
+            case Win32.WM_DRAWITEM:
+                PaintColorSwatch((Win32.DRAWITEMSTRUCT*)lParam);
+                return 1;
+
             case Win32.WM_LBUTTONDOWN:
             {
                 int mx = Win32.LOWORD(lParam);
@@ -250,6 +297,14 @@ internal static unsafe class Popup
                     Config.Monitors[idx].ShowLabel = state == 1;
                     Config.Save();
                 }
+                else if (ctrl == _hBtnColor && notif == Win32.BN_CLICKED)
+                {
+                    OpenColorPicker(hwnd, idx, secondary: false);
+                }
+                else if (ctrl == _hBtnColor2 && notif == Win32.BN_CLICKED)
+                {
+                    OpenColorPicker(hwnd, idx, secondary: true);
+                }
                 break;
             }
 
@@ -261,18 +316,98 @@ internal static unsafe class Popup
         return Win32.DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
+    // ── Color picker ─────────────────────────────────────────────────────────
+
+    // 16 custom colors used by ChooseColor; retained across invocations.
+    private static readonly uint[] _customColors = new uint[16];
+
+    private static void OpenColorPicker(nint ownerHwnd, int monitorIndex, bool secondary)
+    {
+        ref var cfg = ref Config.Monitors[monitorIndex];
+        uint current = secondary ? cfg.ColorSecondary : cfg.Color;
+
+        // ChooseColor takes a COLORREF (BBGGRR); config stores RRGGBB. Convert.
+        byte r = (byte)((current >> 16) & 0xFF);
+        byte g = (byte)((current >>  8) & 0xFF);
+        byte b = (byte)( current        & 0xFF);
+
+        uint chosen;
+        fixed (uint* custom = _customColors)
+        {
+            var cc = new Win32.CHOOSECOLOR
+            {
+                lStructSize  = (uint)sizeof(Win32.CHOOSECOLOR),
+                hwndOwner    = ownerHwnd,
+                rgbResult    = Win32.RGB(r, g, b),
+                lpCustColors = custom,
+                Flags        = Win32.CC_RGBINIT | Win32.CC_FULLOPEN,
+            };
+
+            if (!Win32.ChooseColorW(&cc)) return;
+
+            // Convert COLORREF (BBGGRR) back to config storage format (RRGGBB).
+            byte rr = (byte)( cc.rgbResult        & 0xFF);
+            byte gg = (byte)((cc.rgbResult >>  8) & 0xFF);
+            byte bb = (byte)((cc.rgbResult >> 16) & 0xFF);
+            chosen = (uint)((rr << 16) | (gg << 8) | bb);
+        }
+
+        if (secondary)
+        {
+            cfg.ColorSecondary = chosen;
+            Config.Save();
+            Brushes.SetGpuMemColor(chosen);
+        }
+        else
+        {
+            cfg.Color = chosen;
+            Config.Save();
+            Brushes.SetMonitorColor(monitorIndex, chosen);
+        }
+
+        // Force a repaint of the swatch buttons and the chart behind them.
+        Win32.InvalidateRect(_hBtnColor,  0, true);
+        Win32.InvalidateRect(_hBtnColor2, 0, true);
+        Win32.InvalidateRect(ownerHwnd,   0, false);
+    }
+
+    // Owner-draw paint for the color-picker buttons (WM_DRAWITEM).
+    private static void PaintColorSwatch(Win32.DRAWITEMSTRUCT* dis)
+    {
+        int idx = App.PopupTarget;
+        if (idx < 0) return;
+
+        nint hdc  = dis->hDC;
+        var  rect = dis->rcItem;
+
+        // The primary button always shows ByMonitor[idx]; the secondary button
+        // (GPU only) shows the memory brush.
+        nint fill = dis->hwndItem == _hBtnColor2 ? Brushes.GpuMem : Brushes.ByMonitor[idx];
+        Win32.FillRect(hdc, rect, fill);
+
+        // Thin light border so the swatch reads on charcoal
+        nint border = Win32.CreateSolidBrush(Win32.RGB(90, 90, 90));
+        Win32.FrameRect(hdc, rect, border);
+        Win32.DeleteObject(border);
+    }
+
     // ── Painting ─────────────────────────────────────────────────────────────
 
     private static void Paint(nint hwnd)
     {
         nint hdc = Win32.BeginPaint(hwnd, out var ps);
 
+        // Fill the full client area with charcoal (covers the settings tab and
+        // any area not overwritten by the tab strip / chart).
+        var fullRect = new Win32.RECT(0, 0, Width, Height);
+        Win32.FillRect(hdc, fullRect, Brushes.Bg);
+
         // ── Tab strip ────────────────────────────────────────────────────────
         PaintTabs(hdc);
 
         // ── Content area separator ────────────────────────────────────────────
         var sepRect = new Win32.RECT(0, TabH - 1, Width, TabH);
-        Win32.FillRect(hdc, sepRect, Win32.GetSysColorBrush(15)); // COLOR_BTNFACE
+        Win32.FillRect(hdc, sepRect, Brushes.TabActive);
 
         // ── Monitor tab: bar chart ────────────────────────────────────────────
         if (_activeTab == TAB_MONITOR && App.PopupTarget >= 0)
@@ -296,7 +431,7 @@ internal static unsafe class Popup
             Win32.FillRect(hdc, tabRect, active ? Brushes.TabActive : Brushes.TabBg);
 
             Win32.SetBkMode(hdc, Win32.TRANSPARENT);
-            Win32.SetTextColor(hdc, Win32.GetSysColor(Win32.COLOR_WINDOWTEXT));
+            Win32.SetTextColor(hdc, TextLight);
             Win32.DrawTextW(hdc, names[i], -1, ref tabRect,
                 Win32.DT_CENTER | Win32.DT_VCENTER | Win32.DT_SINGLELINE);
 
@@ -322,7 +457,8 @@ internal static unsafe class Popup
         var chartRect = new Win32.RECT(0, chartTop, chartW, chartBot);
         Win32.FillRect(hdc, chartRect, Brushes.Bg);
 
-        bool isDual = monitorIndex == Config.GPU;
+        bool isDual  = monitorIndex == Config.GPU;
+        nint primary = Brushes.ByMonitor[monitorIndex];
         float barW = chartW / (float)MonitorState.HistoryLen;
         for (int i = 0; i < MonitorState.HistoryLen; i++)
         {
@@ -335,22 +471,28 @@ internal static unsafe class Popup
 
             if (isDual)
             {
-                // Left half: GPU utilization; right half: GPU memory
-                int leftW = Math.Max(1, bw / 2);
-
-                int by = chartBot - (int)barH;
-                Win32.FillRect(hdc, new Win32.RECT(bx, by, bx + leftW, chartBot), Brushes.ForValue(val));
-
+                // Both bars full-width from the bottom. Overlap (bottom → shorter
+                // bar's top) uses the blended color; taller bar's exclusive top
+                // uses its own color.
                 float val2  = MonitorRenderer.HistoryAt2(ref m, i);
                 float barH2 = chartH * (val2 / 100f);
                 if (barH2 < 1f) barH2 = 1f;
-                int by2 = chartBot - (int)barH2;
-                Win32.FillRect(hdc, new Win32.RECT(bx + leftW, by2, bx + bw, chartBot), Brushes.Blue);
+
+                int by1    = chartBot - (int)barH;
+                int by2    = chartBot - (int)barH2;
+                int byBlend = Math.Max(by1, by2);
+
+                Win32.FillRect(hdc, new Win32.RECT(bx, byBlend, bx + bw, chartBot), Brushes.GpuBlend);
+
+                if (by1 < by2)
+                    Win32.FillRect(hdc, new Win32.RECT(bx, by1, bx + bw, byBlend), Brushes.GpuUtil);
+                else if (by2 < by1)
+                    Win32.FillRect(hdc, new Win32.RECT(bx, by2, bx + bw, byBlend), Brushes.GpuMem);
             }
             else
             {
                 int by = chartBot - (int)barH;
-                Win32.FillRect(hdc, new Win32.RECT(bx, by, bx + bw, chartBot), Brushes.ForValue(val));
+                Win32.FillRect(hdc, new Win32.RECT(bx, by, bx + bw, chartBot), primary);
             }
         }
     }
