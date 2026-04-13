@@ -35,6 +35,9 @@ internal static unsafe class App
 
     // Index of the first enabled monitor (owns the timer)
     public static int TimerOwner = -1;
+
+    // Last tick timestamp per monitor — used to gate per-monitor update rates.
+    public static ulong[] LastTickMs = new ulong[MonitorCount];
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -191,14 +194,18 @@ internal static unsafe class Program
 
     private static void OnTick()
     {
+        ulong now = Win32.GetTickCount64();
+
         for (int i = 0; i < App.MonitorCount; i++)
         {
             if (!Config.Monitors[i].Enabled) continue;
 
-            // Per-monitor rate gating
-            // (All monitors share the timer; individual rates are honoured here)
-            // For simplicity in v1, all monitors update every tick.
-            // TODO: track lastUpdated per monitor and gate on UpdateRateMs delta.
+            // Per-monitor rate gating — all monitors share one timer fired at the
+            // fastest enabled rate; each monitor only updates when its own interval
+            // has elapsed.
+            if (now - App.LastTickMs[i] < (ulong)Config.Monitors[i].UpdateRateMs)
+                continue;
+            App.LastTickMs[i] = now;
 
             float value = i switch
             {
