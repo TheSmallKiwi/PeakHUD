@@ -46,7 +46,15 @@ internal static class Brushes
     // GPU dual-bar palette — light blue × purple, blending to periwinkle.
     public static nint GpuUtil;  // RGB( 80, 190, 255) — light blue (same as CPU)
     public static nint GpuMem;   // RGB(180,  70, 220) — purple
-    public static nint GpuBlend; // RGB(130, 130, 237) — periwinkle (overlap)
+    public static nint GpuBlend; // blended overlap
+
+    // Disk dual-bar palette — green (read) × teal (write).
+    public static nint DiskWrite; // RGB( 80, 200, 200) — teal
+    public static nint DiskBlend; // blended overlap
+
+    // Network dual-bar palette — red (receive) × orange (send).
+    public static nint NetSend;  // RGB(255, 158,  60) — orange
+    public static nint NetBlend; // blended overlap
 
     public static nint Font;     // shared HFONT for icon labels + popup text
 
@@ -69,6 +77,18 @@ internal static class Brushes
         GpuBlend = Win32.CreateSolidBrush(RgbToColorRef(
             BlendRgb(Config.Monitors[Config.GPU].Color,
                      Config.Monitors[Config.GPU].ColorSecondary)));
+
+        // Disk palette — read (primary) × write (secondary).
+        DiskWrite = Win32.CreateSolidBrush(RgbToColorRef(Config.Monitors[Config.DISK].ColorSecondary));
+        DiskBlend = Win32.CreateSolidBrush(RgbToColorRef(
+            BlendRgb(Config.Monitors[Config.DISK].Color,
+                     Config.Monitors[Config.DISK].ColorSecondary)));
+
+        // Network palette — receive (primary) × send (secondary).
+        NetSend  = Win32.CreateSolidBrush(RgbToColorRef(Config.Monitors[Config.NETWORK].ColorSecondary));
+        NetBlend = Win32.CreateSolidBrush(RgbToColorRef(
+            BlendRgb(Config.Monitors[Config.NETWORK].Color,
+                     Config.Monitors[Config.NETWORK].ColorSecondary)));
 
         // 13px "Trebuchet MS" — same face as the original WinForms label bitmap
         Font = Win32.CreateFontW(
@@ -99,23 +119,63 @@ internal static class Brushes
         ByMonitor[index] = fresh;
 
         // GPU slot aliases GpuUtil — keep the alias in sync and recompute the blend.
-        if (index == Config.GPU)
-        {
-            GpuUtil = fresh;
-            RebuildGpuBlend();
-        }
+        if (index == Config.GPU)     { GpuUtil = fresh; RebuildGpuBlend();  }
+        if (index == Config.DISK)      RebuildDiskBlend();
+        if (index == Config.NETWORK)   RebuildNetBlend();
 
         if (old != 0) Win32.DeleteObject(old);
     }
 
-    // Replace the GPU memory brush and recompute the overlap blend.
-    public static void SetGpuMemColor(uint rgb)
+    // Replace the secondary brush for any dual-bar monitor.
+    public static void SetSecondaryColor(int index, uint rgb)
     {
-        nint old = GpuMem;
-        GpuMem = Win32.CreateSolidBrush(RgbToColorRef(rgb));
-        RebuildGpuBlend();
-        if (old != 0) Win32.DeleteObject(old);
+        switch (index)
+        {
+            case Config.GPU:
+            {
+                nint old = GpuMem;
+                GpuMem = Win32.CreateSolidBrush(RgbToColorRef(rgb));
+                RebuildGpuBlend();
+                if (old != 0) Win32.DeleteObject(old);
+                break;
+            }
+            case Config.DISK:
+            {
+                nint old = DiskWrite;
+                DiskWrite = Win32.CreateSolidBrush(RgbToColorRef(rgb));
+                RebuildDiskBlend();
+                if (old != 0) Win32.DeleteObject(old);
+                break;
+            }
+            case Config.NETWORK:
+            {
+                nint old = NetSend;
+                NetSend = Win32.CreateSolidBrush(RgbToColorRef(rgb));
+                RebuildNetBlend();
+                if (old != 0) Win32.DeleteObject(old);
+                break;
+            }
+        }
     }
+
+    // Return the secondary brush for the color-picker swatch.
+    public static nint GetSecondaryBrush(int configIndex) => configIndex switch
+    {
+        Config.GPU     => GpuMem,
+        Config.DISK    => DiskWrite,
+        Config.NETWORK => NetSend,
+        _              => 0
+    };
+
+    // Return (primary, secondary, blend) brushes for a dual-bar monitor.
+    public static (nint primary, nint secondary, nint blend) GetDualBrushes(int configIndex) =>
+        configIndex switch
+        {
+            Config.GPU     => (GpuUtil,                   GpuMem,    GpuBlend),
+            Config.DISK    => (ByMonitor[Config.DISK],    DiskWrite, DiskBlend),
+            Config.NETWORK => (ByMonitor[Config.NETWORK], NetSend,   NetBlend),
+            _              => (ByMonitor[configIndex],    0,         0)
+        };
 
     private static void RebuildGpuBlend()
     {
@@ -124,6 +184,26 @@ internal static class Brushes
             Config.Monitors[Config.GPU].ColorSecondary);
         nint old = GpuBlend;
         GpuBlend = Win32.CreateSolidBrush(RgbToColorRef(blend));
+        if (old != 0) Win32.DeleteObject(old);
+    }
+
+    private static void RebuildDiskBlend()
+    {
+        uint blend = BlendRgb(
+            Config.Monitors[Config.DISK].Color,
+            Config.Monitors[Config.DISK].ColorSecondary);
+        nint old = DiskBlend;
+        DiskBlend = Win32.CreateSolidBrush(RgbToColorRef(blend));
+        if (old != 0) Win32.DeleteObject(old);
+    }
+
+    private static void RebuildNetBlend()
+    {
+        uint blend = BlendRgb(
+            Config.Monitors[Config.NETWORK].Color,
+            Config.Monitors[Config.NETWORK].ColorSecondary);
+        nint old = NetBlend;
+        NetBlend = Win32.CreateSolidBrush(RgbToColorRef(blend));
         if (old != 0) Win32.DeleteObject(old);
     }
 
@@ -212,8 +292,11 @@ internal static unsafe class MonitorRenderer
         Win32.FillRect(sharedDC, fullRect, Brushes.Bg);
 
         // Draw bar chart (10 bars across 32px)
-        bool isDual  = m.ConfigIndex == Config.GPU;
+        bool isDual = m.ConfigIndex is Config.GPU or Config.DISK or Config.NETWORK;
         nint primary = Brushes.ByMonitor[m.ConfigIndex];
+        var (dualPrimary, dualSecondary, dualBlend) = isDual
+            ? Brushes.GetDualBrushes(m.ConfigIndex)
+            : (0, 0, 0);
         float barW = MonitorState.IconSize / (float)MonitorState.HistoryLen;
         for (int i = 0; i < MonitorState.HistoryLen; i++)
         {
@@ -233,16 +316,16 @@ internal static unsafe class MonitorRenderer
                 float barH2 = MonitorState.IconSize * (val2 / 100f);
                 if (barH2 < 1f) barH2 = 1f;
 
-                int by1    = MonitorState.IconSize - (int)barH;   // util bar top
-                int by2    = MonitorState.IconSize - (int)barH2;  // memory bar top
+                int by1     = MonitorState.IconSize - (int)barH;   // primary bar top
+                int by2     = MonitorState.IconSize - (int)barH2;  // secondary bar top
                 int byBlend = Math.Max(by1, by2);                  // top of blended overlap
 
-                Win32.FillRect(sharedDC, new Win32.RECT(bx, byBlend, bx + bw, MonitorState.IconSize), Brushes.GpuBlend);
+                Win32.FillRect(sharedDC, new Win32.RECT(bx, byBlend, bx + bw, MonitorState.IconSize), dualBlend);
 
                 if (by1 < by2)
-                    Win32.FillRect(sharedDC, new Win32.RECT(bx, by1, bx + bw, byBlend), Brushes.GpuUtil);
+                    Win32.FillRect(sharedDC, new Win32.RECT(bx, by1, bx + bw, byBlend), dualPrimary);
                 else if (by2 < by1)
-                    Win32.FillRect(sharedDC, new Win32.RECT(bx, by2, bx + bw, byBlend), Brushes.GpuMem);
+                    Win32.FillRect(sharedDC, new Win32.RECT(bx, by2, bx + bw, byBlend), dualSecondary);
             }
             else
             {

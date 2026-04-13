@@ -42,8 +42,10 @@ internal static class Config
         0x00_50BEFF, // GPU     — light blue util (same as CPU)
     ];
 
-    // Default secondary colors; only GPU uses this slot (memory bar).
-    public const uint DefaultGpuMemColor = 0x00_B446DC; // purple (180, 70, 220)
+    // Default secondary colors for dual-bar monitors.
+    public const uint DefaultGpuMemColor  = 0x00_B446DC; // purple  (180,  70, 220) — GPU memory
+    public const uint DefaultDiskWrite    = 0x00_50C8C8; // teal    ( 80, 200, 200) — disk write
+    public const uint DefaultNetSend      = 0x00_FF9E3C; // orange  (255, 158,  60) — network send
 
     private static void ApplyDefaults()
     {
@@ -56,9 +58,11 @@ internal static class Config
             Monitors[i].Color        = DefaultColors[i];
             Monitors[i].ColorSecondary = 0;
         }
-        Monitors[DISK   ].MaxBytesPerSec = 524_288_000L;  // 500 MB/s
-        Monitors[NETWORK].MaxBytesPerSec = 131_072_000L;  // 125 MB/s (1 Gb link)
-        Monitors[GPU    ].ColorSecondary = DefaultGpuMemColor;
+        Monitors[DISK   ].MaxBytesPerSec  = 524_288_000L;  // 500 MB/s
+        Monitors[NETWORK].MaxBytesPerSec  = 131_072_000L;  // 125 MB/s (1 Gb link)
+        Monitors[GPU    ].ColorSecondary  = DefaultGpuMemColor;
+        Monitors[DISK   ].ColorSecondary  = DefaultDiskWrite;
+        Monitors[NETWORK].ColorSecondary  = DefaultNetSend;
     }
 
     // ── Path resolution ───────────────────────────────────────────────────────

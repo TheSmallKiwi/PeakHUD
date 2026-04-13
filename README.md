@@ -4,6 +4,8 @@ A lightweight Windows taskbar widget that displays live system metrics — CPU, 
 
 Built with pure Win32 and NativeAOT: no WinForms, no WPF, no Electron. The resulting binary is under 2 MB and uses minimal memory.
 
+![PeakHUD on the taskbar](Taskbar.png)
+
 ## Features
 
 - Live sparkline charts rendered directly into taskbar icons
@@ -48,8 +50,8 @@ color=0x2859DC
 enabled=true
 update_rate_ms=1000
 show_label=true
-max_bytes_per_sec=524288000
 color=0x50C864
+color_secondary=0x50C8C8
 
 [network]
 enabled=true
@@ -57,6 +59,7 @@ update_rate_ms=1000
 show_label=true
 max_bytes_per_sec=131072000
 color=0xFF6E6E
+color_secondary=0xFF9E3C
 
 [gpu]
 enabled=true
@@ -75,7 +78,7 @@ color_secondary=0xB446DC
 | `show_label` | Display the metric name inside the icon |
 | `max_bytes_per_sec` | Scale ceiling for Disk and Network (bytes/sec) |
 | `color` | Bar color as `0xRRGGBB` hex |
-| `color_secondary` | Secondary bar color (GPU memory only) |
+| `color_secondary` | Secondary bar color (Disk write, Network send, GPU memory) |
 
 Restart PeakHUD after editing the file.
 

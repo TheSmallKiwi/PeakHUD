@@ -16,7 +16,8 @@ internal static unsafe class DiskMonitor
     private static nint _hReadCounter;
     private static nint _hWriteCounter;
     private static double _rollingMaxBps = BaselineBps;
-    private static ulong _prevTick;
+    private static float  _writePercent;
+    private static ulong  _prevTick;
 
     // Exposed for the popup label (MB/s, updated each Read() call).
     public static float CurrentReadMBps;
@@ -56,8 +57,12 @@ internal static unsafe class DiskMonitor
         _rollingMaxBps = Math.Max(_rollingMaxBps * decayFactor, BaselineBps);
         _rollingMaxBps = Math.Max(_rollingMaxBps, totalBps);
 
-        return (float)Math.Clamp(totalBps / _rollingMaxBps * 100.0, 0.0, 100.0);
+        _writePercent = (float)Math.Clamp(writeBps / _rollingMaxBps * 100.0, 0.0, 100.0);
+        return (float)Math.Clamp(readBps / _rollingMaxBps * 100.0, 0.0, 100.0);
     }
+
+    // Secondary value for the write bar (History2). Call after Read().
+    public static float ReadSecondary() => _writePercent;
 
     private static double GetCounterDouble(nint hCounter)
     {

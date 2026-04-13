@@ -211,8 +211,9 @@ internal static unsafe class Program
             };
 
             MonitorRenderer.Push(ref App.Monitors[i], value);
-            if (i == Config.GPU)
-                MonitorRenderer.Push2(ref App.Monitors[i], GpuMonitor.ReadMemory());
+            if (i == Config.GPU)     MonitorRenderer.Push2(ref App.Monitors[i], GpuMonitor.ReadMemory());
+            if (i == Config.DISK)    MonitorRenderer.Push2(ref App.Monitors[i], DiskMonitor.ReadSecondary());
+            if (i == Config.NETWORK) MonitorRenderer.Push2(ref App.Monitors[i], NetworkMonitor.ReadSecondary());
             MonitorRenderer.RenderAndPush(ref App.Monitors[i], App.IconHwnds[i], App.SharedDC);
         }
 
@@ -243,6 +244,10 @@ internal static unsafe class Program
         if (Brushes.GpuUtil   != 0) Win32.DeleteObject(Brushes.GpuUtil);
         if (Brushes.GpuMem    != 0) Win32.DeleteObject(Brushes.GpuMem);
         if (Brushes.GpuBlend  != 0) Win32.DeleteObject(Brushes.GpuBlend);
+        if (Brushes.DiskWrite != 0) Win32.DeleteObject(Brushes.DiskWrite);
+        if (Brushes.DiskBlend != 0) Win32.DeleteObject(Brushes.DiskBlend);
+        if (Brushes.NetSend   != 0) Win32.DeleteObject(Brushes.NetSend);
+        if (Brushes.NetBlend  != 0) Win32.DeleteObject(Brushes.NetBlend);
         if (Brushes.TabBg     != 0) Win32.DeleteObject(Brushes.TabBg);
         if (Brushes.TabActive != 0) Win32.DeleteObject(Brushes.TabActive);
         if (Brushes.Accent    != 0) Win32.DeleteObject(Brushes.Accent);

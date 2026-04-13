@@ -208,8 +208,9 @@ internal static unsafe class Popup
         Win32.ShowWindow(_hLabelColor, settingsVis);
         Win32.ShowWindow(_hBtnColor,   settingsVis);
 
-        // Second swatch only visible for GPU (memory color).
-        bool showSecondary = tab == TAB_SETTINGS && App.PopupTarget == Config.GPU;
+        // Second swatch visible for all dual-bar monitors (GPU, Disk, Network).
+        bool showSecondary = tab == TAB_SETTINGS &&
+            App.PopupTarget is Config.GPU or Config.DISK or Config.NETWORK;
         Win32.ShowWindow(_hBtnColor2, showSecondary ? Win32.SW_SHOW : Win32.SW_HIDE);
 
         Win32.InvalidateRect(hwnd, 0, true);
@@ -228,11 +229,13 @@ internal static unsafe class Popup
     private static void UpdateReadingLabel(int monitorIndex)
     {
         ref var m = ref App.Monitors[monitorIndex];
-        string text = monitorIndex == Config.GPU
-            ? $"GPU: {m.Current:F1}%  Mem: {m.Current2:F1}%"
-            : monitorIndex == Config.DISK
-                ? $"Read: {DiskMonitor.CurrentReadMBps:F1} MB/s  Write: {DiskMonitor.CurrentWriteMBps:F1} MB/s"
-                : $"{App.MonitorNames[monitorIndex]}: {m.Current:F1}%";
+        string text = monitorIndex switch
+        {
+            Config.GPU     => $"GPU: {m.Current:F1}%  Mem: {m.Current2:F1}%",
+            Config.DISK    => $"Read: {DiskMonitor.CurrentReadMBps:F1} MB/s  Write: {DiskMonitor.CurrentWriteMBps:F1} MB/s",
+            Config.NETWORK => $"Down: {NetworkMonitor.CurrentReceiveMBps:F1} MB/s  Up: {NetworkMonitor.CurrentSendMBps:F1} MB/s",
+            _              => $"{App.MonitorNames[monitorIndex]}: {m.Current:F1}%"
+        };
         Win32.SetWindowTextW(_hReadingLabel, text);
     }
 
@@ -358,7 +361,7 @@ internal static unsafe class Popup
         {
             cfg.ColorSecondary = chosen;
             Config.Save();
-            Brushes.SetGpuMemColor(chosen);
+            Brushes.SetSecondaryColor(monitorIndex, chosen);
         }
         else
         {
@@ -382,9 +385,11 @@ internal static unsafe class Popup
         nint hdc  = dis->hDC;
         var  rect = dis->rcItem;
 
-        // The primary button always shows ByMonitor[idx]; the secondary button
-        // (GPU only) shows the memory brush.
-        nint fill = dis->hwndItem == _hBtnColor2 ? Brushes.GpuMem : Brushes.ByMonitor[idx];
+        // Primary button shows ByMonitor[idx]; secondary button shows the monitor's
+        // secondary brush (write for disk, send for network, memory for GPU).
+        nint fill = dis->hwndItem == _hBtnColor2
+            ? Brushes.GetSecondaryBrush(idx)
+            : Brushes.ByMonitor[idx];
         Win32.FillRect(hdc, rect, fill);
 
         // Thin light border so the swatch reads on charcoal
@@ -459,8 +464,11 @@ internal static unsafe class Popup
         var chartRect = new Win32.RECT(0, chartTop, chartW, chartBot);
         Win32.FillRect(hdc, chartRect, Brushes.Bg);
 
-        bool isDual  = monitorIndex == Config.GPU;
+        bool isDual = monitorIndex is Config.GPU or Config.DISK or Config.NETWORK;
         nint primary = Brushes.ByMonitor[monitorIndex];
+        var (dualPrimary, dualSecondary, dualBlend) = isDual
+            ? Brushes.GetDualBrushes(monitorIndex)
+            : (0, 0, 0);
         float barW = chartW / (float)MonitorState.HistoryLen;
         for (int i = 0; i < MonitorState.HistoryLen; i++)
         {
@@ -480,16 +488,16 @@ internal static unsafe class Popup
                 float barH2 = chartH * (val2 / 100f);
                 if (barH2 < 1f) barH2 = 1f;
 
-                int by1    = chartBot - (int)barH;
-                int by2    = chartBot - (int)barH2;
+                int by1     = chartBot - (int)barH;
+                int by2     = chartBot - (int)barH2;
                 int byBlend = Math.Max(by1, by2);
 
-                Win32.FillRect(hdc, new Win32.RECT(bx, byBlend, bx + bw, chartBot), Brushes.GpuBlend);
+                Win32.FillRect(hdc, new Win32.RECT(bx, byBlend, bx + bw, chartBot), dualBlend);
 
                 if (by1 < by2)
-                    Win32.FillRect(hdc, new Win32.RECT(bx, by1, bx + bw, byBlend), Brushes.GpuUtil);
+                    Win32.FillRect(hdc, new Win32.RECT(bx, by1, bx + bw, byBlend), dualPrimary);
                 else if (by2 < by1)
-                    Win32.FillRect(hdc, new Win32.RECT(bx, by2, bx + bw, byBlend), Brushes.GpuMem);
+                    Win32.FillRect(hdc, new Win32.RECT(bx, by2, bx + bw, byBlend), dualSecondary);
             }
             else
             {

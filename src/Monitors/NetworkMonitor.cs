@@ -1,52 +1,66 @@
 using System.Runtime.InteropServices;
 
 // Network throughput via GetIfTable2.
-// Sums InOctets + OutOctets across all active non-loopback interfaces.
+// Sums InOctets and OutOctets separately across all active non-loopback interfaces.
+// Primary value (History) = receive (download); secondary (History2) = send (upload).
 // Uses 64-bit counters (GetIfTable2, not GetIfTable) to avoid overflow on fast links.
 // FreeMibTable MUST be called after each GetIfTable2 call — it's kernel-allocated.
 
 internal static unsafe class NetworkMonitor
 {
-    private static ulong _prevBytes;
+    private static ulong _prevIn;
+    private static ulong _prevOut;
     private static ulong _prevTick;
+    private static float _sendPercent;
+
+    // Exposed for the popup label (MB/s, updated each Read() call).
+    public static float CurrentReceiveMBps;
+    public static float CurrentSendMBps;
 
     public static void Init()
     {
-        _prevBytes = SumBytes();
-        _prevTick  = Win32.GetTickCount64();
+        SumInOut(out _prevIn, out _prevOut);
+        _prevTick = Win32.GetTickCount64();
     }
 
     public static float Read()
     {
-        ulong now       = Win32.GetTickCount64();
-        ulong curBytes  = SumBytes();
+        ulong now = Win32.GetTickCount64();
+        SumInOut(out ulong curIn, out ulong curOut);
         ulong deltaTick = now - _prevTick;
 
-        ulong deltaBytes = curBytes >= _prevBytes ? curBytes - _prevBytes : 0;
-        _prevBytes = curBytes;
-        _prevTick  = now;
+        ulong deltaIn  = curIn  >= _prevIn  ? curIn  - _prevIn  : 0;
+        ulong deltaOut = curOut >= _prevOut ? curOut - _prevOut : 0;
+        _prevIn   = curIn;
+        _prevOut  = curOut;
+        _prevTick = now;
 
-        if (deltaTick == 0) return 0f;
+        if (deltaTick == 0) { _sendPercent = 0f; return 0f; }
 
-        double bytesPerSec = deltaBytes * 1000.0 / deltaTick;
-        long   maxBps      = Config.Monitors[Config.NETWORK].MaxBytesPerSec;
+        double inBps  = deltaIn  * 1000.0 / deltaTick;
+        double outBps = deltaOut * 1000.0 / deltaTick;
+
+        long maxBps = Config.Monitors[Config.NETWORK].MaxBytesPerSec;
         if (maxBps <= 0) maxBps = 131_072_000L;
 
-        return (float)Math.Clamp(bytesPerSec / maxBps * 100.0, 0.0, 100.0);
+        CurrentReceiveMBps = (float)(inBps  / (1024 * 1024));
+        CurrentSendMBps    = (float)(outBps / (1024 * 1024));
+
+        _sendPercent = (float)Math.Clamp(outBps / maxBps * 100.0, 0.0, 100.0);
+        return (float)Math.Clamp(inBps / maxBps * 100.0, 0.0, 100.0);
     }
 
-    private static ulong SumBytes()
+    // Secondary value for the send bar (History2). Call after Read().
+    public static float ReadSecondary() => _sendPercent;
+
+    private static void SumInOut(out ulong inBytes, out ulong outBytes)
     {
-        if (Win32.GetIfTable2(out nint pTable) != 0) return 0;
+        inBytes = outBytes = 0;
+        if (Win32.GetIfTable2(out nint pTable) != 0) return;
 
-        ulong total   = 0;
-        uint  count   = (uint)Marshal.ReadInt32(pTable);   // MIB_IF_TABLE2.NumEntries
+        uint  count   = (uint)Marshal.ReadInt32(pTable);
         int   rowSize = sizeof(Win32.MIB_IF_ROW2);
-        nint  rowPtr  = pTable + sizeof(uint) + (sizeof(uint) * 0); // align after NumEntries
-
-        // NumEntries is followed by the array; struct alignment pads to 8 bytes
-        // The real offset of Table[] is sizeof(ULONG) padded to pointer-size = 8 bytes on x64
-        rowPtr = pTable + 8;
+        nint  rowPtr  = pTable + 8; // Table[] is at offset 8 on x64 (ULONG padded to 8)
 
         for (uint i = 0; i < count; i++)
         {
@@ -54,12 +68,12 @@ internal static unsafe class NetworkMonitor
             if (row->Type != Win32.IF_TYPE_SOFTWARE_LOOPBACK &&
                 row->OperStatus == Win32.IfOperStatusUp)
             {
-                total += row->InOctets + row->OutOctets;
+                inBytes  += row->InOctets;
+                outBytes += row->OutOctets;
             }
             rowPtr += rowSize;
         }
 
         Win32.FreeMibTable(pTable);
-        return total;
     }
 }
