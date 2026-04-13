@@ -38,6 +38,18 @@ internal static unsafe class App
 
     // Last tick timestamp per monitor — used to gate per-monitor update rates.
     public static ulong[] LastTickMs = new ulong[MonitorCount];
+
+    // Re-compute the minimum enabled UpdateRateMs and re-arm the shared timer.
+    // Call this whenever any monitor's UpdateRateMs changes at runtime.
+    public static void RearmTimer()
+    {
+        if (TimerOwner < 0) return;
+        uint interval = uint.MaxValue;
+        for (int j = 0; j < MonitorCount; j++)
+            if (Config.Monitors[j].Enabled && (uint)Config.Monitors[j].UpdateRateMs < interval)
+                interval = (uint)Config.Monitors[j].UpdateRateMs;
+        Win32.SetTimer(IconHwnds[TimerOwner], TimerId, interval, 0);
+    }
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────

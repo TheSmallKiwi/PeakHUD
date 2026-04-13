@@ -293,6 +293,7 @@ internal static unsafe class Popup
                     {
                         Config.Monitors[idx].UpdateRateMs = rate;
                         Config.Save();
+                        App.RearmTimer();
                     }
                 }
                 else if (ctrl == _hCheckLabel && notif == Win32.BN_CLICKED)
