@@ -10,7 +10,7 @@ Built with pure Win32 and NativeAOT: no WinForms, no WPF, no Electron. The resul
 - Monitors: CPU usage, RAM usage, Disk I/O, Network throughput, GPU utilization + VRAM
 - Click any taskbar icon to open a larger popup chart
 - Per-monitor configuration: enable/disable, update rate, bar colors, max scale
-- Settings persist to `%APPDATA%\PeakHUD\settings.ini` (written on first run)
+- Settings persist to `%APPDATA%\Roaming\PeakHUD\settings.ini` (written on first run)
 - Windows 11 dark theme support
 
 ## Requirements
@@ -22,7 +22,7 @@ Built with pure Win32 and NativeAOT: no WinForms, no WPF, no Electron. The resul
 
 Download `PeakHUD.exe` from the [latest release](../../releases/latest) and run it. No installer needed.
 
-To start PeakHUD automatically with Windows, add a shortcut to `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`.
+To start PeakHUD automatically with Windows, add a shortcut to `%APPDATA%\Roaming\Microsoft\Windows\Start Menu\Programs\Startup`.
 
 **Note for first-time users:** Windows SmartScreen may warn that the file is unrecognized. This is normal for new
 unsigned binaries with no download history. Click More info → Run anyway to proceed.
