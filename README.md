@@ -24,6 +24,9 @@ Download `PeakHUD.exe` from the [latest release](../../releases/latest) and run 
 
 To start PeakHUD automatically with Windows, add a shortcut to `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`.
 
+**Note for first-time users:** Windows SmartScreen may warn that the file is unrecognized. This is normal for new
+unsigned binaries with no download history. Click More info → Run anyway to proceed.
+
 ## Configuration
 
 On first launch, PeakHUD writes default settings to `%APPDATA%\PeakHUD\settings.ini`. Edit this file to customize each monitor:
