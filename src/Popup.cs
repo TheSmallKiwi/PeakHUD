@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using PeakHUD.Monitors;
 
 // Popup window — a single shared HWND shown/hidden on demand when the user clicks
 // any monitor's taskbar button. Never destroyed during the session.
@@ -8,20 +9,22 @@ using System.Runtime.InteropServices;
 //   [0..31]   Tab strip:  "Monitor" | "Settings"
 //   [32..279] Content:    Monitor tab -or- Settings tab (child controls)
 
+namespace PeakHUD;
+
 internal static unsafe class Popup
 {
     // Window dimensions
-    public  const int Width    = 360;
-    public  const int Height   = 280;
+    private const int Width    = 360;
+    private const int Height   = 280;
     private const int TabH     = 32;
     private const int TabW     = 90;
     private const int Padding  = 12;
 
     // Tab indices
-    private const int TAB_MONITOR  = 0;
-    private const int TAB_SETTINGS = 1;
+    private const int TabMonitor  = 0;
+    private const int TabSettings = 1;
 
-    private static int  _activeTab = TAB_MONITOR;
+    private static int  _activeTab = TabMonitor;
 
     // Child control HWNDs (Settings tab)
     private static nint _hEditRate;
@@ -44,7 +47,7 @@ internal static unsafe class Popup
 
     // ── Registration ─────────────────────────────────────────────────────────
 
-    public static unsafe void RegisterClass(nint hInstance)
+    public static void RegisterClass(nint hInstance)
     {
         if (_classRegistered) return;
         _classRegistered = true;
@@ -100,7 +103,7 @@ internal static unsafe class Popup
 
         // Update reading label before showing to avoid flash of stale data
         UpdateReadingLabel(monitorIndex);
-        ActivateTab(popupHwnd, TAB_MONITOR);
+        ActivateTab(popupHwnd, TabMonitor);
         SyncSettingsControls(monitorIndex);
 
         Win32.SetWindowPos(popupHwnd, -1 /*HWND_TOPMOST*/,
@@ -130,7 +133,7 @@ internal static unsafe class Popup
         _hLabelRate = Win32.CreateWindowExW(0, "STATIC", "Update Rate",
             Win32.WS_CHILD,   // hidden initially
             Padding, sy, 200, 20,
-            hwnd, (nint)1001, hInstance, 0);
+            hwnd, 1001, hInstance, 0);
         Win32.SendMessageW(_hLabelRate, Win32.WM_SETFONT, hFont, 1);
         sy += 22;
 
@@ -138,7 +141,7 @@ internal static unsafe class Popup
         _hEditRate = Win32.CreateWindowExW(Win32.WS_EX_CLIENTEDGE, "EDIT", "1000",
             Win32.WS_CHILD | Win32.ES_NUMBER,
             Padding, sy, 80, 24,
-            hwnd, (nint)1002, hInstance, 0);
+            hwnd, 1002, hInstance, 0);
         Win32.SendMessageW(_hEditRate, Win32.WM_SETFONT, hFont, 1);
         sy += 30;
 
@@ -146,7 +149,7 @@ internal static unsafe class Popup
         _hLabelMs = Win32.CreateWindowExW(0, "STATIC", "ms",
             Win32.WS_CHILD,
             Padding + 86, sy - 28, 30, 24,
-            hwnd, (nint)1004, hInstance, 0);
+            hwnd, 1004, hInstance, 0);
         Win32.SendMessageW(_hLabelMs, Win32.WM_SETFONT, hFont, 1);
 
         sy += 12;
@@ -155,7 +158,7 @@ internal static unsafe class Popup
         _hLabelIcon = Win32.CreateWindowExW(0, "STATIC", "Icon Label",
             Win32.WS_CHILD,
             Padding, sy, 200, 20,
-            hwnd, (nint)1005, hInstance, 0);
+            hwnd, 1005, hInstance, 0);
         Win32.SendMessageW(_hLabelIcon, Win32.WM_SETFONT, hFont, 1);
         sy += 22;
 
@@ -163,7 +166,7 @@ internal static unsafe class Popup
         _hCheckLabel = Win32.CreateWindowExW(0, "BUTTON", "Show label on icon",
             Win32.WS_CHILD | Win32.BS_AUTOCHECKBOX,
             Padding, sy, 240, 24,
-            hwnd, (nint)1006, hInstance, 0);
+            hwnd, 1006, hInstance, 0);
         Win32.SendMessageW(_hCheckLabel, Win32.WM_SETFONT, hFont, 1);
         sy += 34;
 
@@ -171,7 +174,7 @@ internal static unsafe class Popup
         _hLabelColor = Win32.CreateWindowExW(0, "STATIC", "Bar Color",
             Win32.WS_CHILD,
             Padding, sy, 200, 20,
-            hwnd, (nint)1007, hInstance, 0);
+            hwnd, 1007, hInstance, 0);
         Win32.SendMessageW(_hLabelColor, Win32.WM_SETFONT, hFont, 1);
         sy += 22;
 
@@ -179,13 +182,13 @@ internal static unsafe class Popup
         _hBtnColor = Win32.CreateWindowExW(0, "BUTTON", "",
             Win32.WS_CHILD | Win32.BS_OWNERDRAW,
             Padding, sy, 80, 28,
-            hwnd, (nint)1008, hInstance, 0);
+            hwnd, 1008, hInstance, 0);
         Win32.SendMessageW(_hBtnColor, Win32.WM_SETFONT, hFont, 1);
 
         _hBtnColor2 = Win32.CreateWindowExW(0, "BUTTON", "",
             Win32.WS_CHILD | Win32.BS_OWNERDRAW,
             Padding + 92, sy, 80, 28,
-            hwnd, (nint)1009, hInstance, 0);
+            hwnd, 1009, hInstance, 0);
         Win32.SendMessageW(_hBtnColor2, Win32.WM_SETFONT, hFont, 1);
     }
 
@@ -196,10 +199,10 @@ internal static unsafe class Popup
         _activeTab = tab;
 
         // Show/hide reading label (Monitor tab)
-        Win32.ShowWindow(_hReadingLabel, tab == TAB_MONITOR ? Win32.SW_SHOW : Win32.SW_HIDE);
+        Win32.ShowWindow(_hReadingLabel, tab == TabMonitor ? Win32.SW_SHOW : Win32.SW_HIDE);
 
         // Show/hide all settings controls
-        int settingsVis = tab == TAB_SETTINGS ? Win32.SW_SHOW : Win32.SW_HIDE;
+        int settingsVis = tab == TabSettings ? Win32.SW_SHOW : Win32.SW_HIDE;
         Win32.ShowWindow(_hLabelRate,  settingsVis);
         Win32.ShowWindow(_hEditRate,   settingsVis);
         Win32.ShowWindow(_hLabelMs,    settingsVis);
@@ -209,8 +212,8 @@ internal static unsafe class Popup
         Win32.ShowWindow(_hBtnColor,   settingsVis);
 
         // Second swatch visible for all dual-bar monitors (GPU, Disk, Network).
-        bool showSecondary = tab == TAB_SETTINGS &&
-            App.PopupTarget is Config.GPU or Config.DISK or Config.NETWORK;
+        bool showSecondary = tab == TabSettings &&
+                             App.PopupTarget is Config.GPU or Config.DISK or Config.NETWORK;
         Win32.ShowWindow(_hBtnColor2, showSecondary ? Win32.SW_SHOW : Win32.SW_HIDE);
 
         Win32.InvalidateRect(hwnd, 0, true);
@@ -289,7 +292,7 @@ internal static unsafe class Popup
                     char* buf = stackalloc char[8];
                     int len = Win32.GetWindowTextW(_hEditRate, buf, 8);
                     if (len > 0 && int.TryParse(new ReadOnlySpan<char>(buf, len), out int rate)
-                        && rate >= 100 && rate <= 10_000)
+                                && rate >= 100 && rate <= 10_000)
                     {
                         Config.Monitors[idx].UpdateRateMs = rate;
                         Config.Save();
@@ -325,7 +328,7 @@ internal static unsafe class Popup
     // ── Color picker ─────────────────────────────────────────────────────────
 
     // 16 custom colors used by ChooseColor; retained across invocations.
-    private static readonly uint[] _customColors = new uint[16];
+    private static readonly uint[] CustomColors = new uint[16];
 
     private static void OpenColorPicker(nint ownerHwnd, int monitorIndex, bool secondary)
     {
@@ -338,7 +341,7 @@ internal static unsafe class Popup
         byte b = (byte)( current        & 0xFF);
 
         uint chosen;
-        fixed (uint* custom = _customColors)
+        fixed (uint* custom = CustomColors)
         {
             var cc = new Win32.CHOOSECOLOR
             {
@@ -418,7 +421,7 @@ internal static unsafe class Popup
         Win32.FillRect(hdc, sepRect, Brushes.TabActive);
 
         // ── Monitor tab: bar chart ────────────────────────────────────────────
-        if (_activeTab == TAB_MONITOR && App.PopupTarget >= 0)
+        if (_activeTab == TabMonitor && App.PopupTarget >= 0)
         {
             PaintChart(hdc, App.PopupTarget);
             // Update the reading label text (it's a STATIC child — repaints itself)

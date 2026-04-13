@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using PeakHUD.Monitors;
 
+namespace PeakHUD;
 // PeakHUD — single-process multi-monitor taskbar widget.
 // Pure Win32 + NativeAOT: no WinForms, no System.Drawing.
 // One HWND per enabled monitor (taskbar button + custom icon).
@@ -8,7 +10,7 @@ using System.Runtime.InteropServices;
 
 // ── Global state ─────────────────────────────────────────────────────────────
 
-internal static unsafe class App
+internal static class App
 {
     public const int MonitorCount = Config.COUNT;
 
@@ -16,7 +18,7 @@ internal static unsafe class App
     public static MonitorState[] Monitors = new MonitorState[MonitorCount];
 
     // Icon window handles — one per enabled monitor (0 if disabled)
-    public static nint[] IconHwnds = new nint[MonitorCount];
+    public static readonly nint[] IconHwnds = new nint[MonitorCount];
 
     // Shared popup window (never destroyed; shown/hidden per click)
     public static nint PopupHwnd;
@@ -37,7 +39,7 @@ internal static unsafe class App
     public static int TimerOwner = -1;
 
     // Last tick timestamp per monitor — used to gate per-monitor update rates.
-    public static ulong[] LastTickMs = new ulong[MonitorCount];
+    public static readonly ulong[] LastTickMs = new ulong[MonitorCount];
 
     // Re-compute the minimum enabled UpdateRateMs and re-arm the shared timer.
     // Call this whenever any monitor's UpdateRateMs changes at runtime.
@@ -144,7 +146,7 @@ internal static unsafe class Program
                 lpfnWndProc   = &IconWndProc,
                 hInstance     = hInstance,
                 hCursor       = Win32.LoadCursorW(0, Win32.IDC_ARROW),
-                hbrBackground = (nint)(Win32.COLOR_WINDOW + 1),
+                hbrBackground = Win32.COLOR_WINDOW + 1,
                 lpszClassName = className
             };
             Win32.RegisterClassExW(&wc);
@@ -162,7 +164,7 @@ internal static unsafe class Program
             0, 0, hInstance, 0);
 
         // Store monitor index in USERDATA for retrieval in WndProc
-        Win32.SetWindowLongPtrW(hwnd, Win32.GWLP_USERDATA, (nint)monitorIndex);
+        Win32.SetWindowLongPtrW(hwnd, Win32.GWLP_USERDATA, monitorIndex);
         // ShowWindow is intentionally deferred — caller sets AppUserModelID first.
         return hwnd;
     }

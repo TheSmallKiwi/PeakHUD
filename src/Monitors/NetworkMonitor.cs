@@ -8,6 +8,8 @@ using System.Runtime.InteropServices;
 // Scale uses a rolling maximum (same approach as DiskMonitor) so small bursts remain
 // visible — the ceiling decays at ~1% per second back to the 1 MB/s baseline floor.
 
+namespace PeakHUD.Monitors;
+
 internal static unsafe class NetworkMonitor
 {
     // 1 MB/s floor — bars never peg at 100% from minor idle traffic.

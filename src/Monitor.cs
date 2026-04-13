@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
+namespace PeakHUD;
 // MonitorState holds per-monitor GDI resources, ring buffer, and current reading.
 // Icon rendering uses a single shared DC (App.SharedDC) — all monitors render sequentially
 // in the WM_TIMER handler, so there is no contention.
@@ -41,7 +41,7 @@ internal static class Brushes
 
     // Per-monitor fixed color, indexed by Config.CPU / RAM / DISK / NETWORK / GPU.
     // GPU's slot holds the primary (util) color; the memory bar uses GpuMem.
-    public static nint[] ByMonitor = new nint[Config.COUNT];
+    public static readonly nint[] ByMonitor = new nint[Config.COUNT];
 
     // GPU dual-bar palette — light blue × purple, blending to periwinkle.
     public static nint GpuUtil;  // RGB( 80, 190, 255) — light blue (same as CPU)
@@ -76,19 +76,19 @@ internal static class Brushes
         GpuMem   = Win32.CreateSolidBrush(RgbToColorRef(Config.Monitors[Config.GPU].ColorSecondary));
         GpuBlend = Win32.CreateSolidBrush(RgbToColorRef(
             BlendRgb(Config.Monitors[Config.GPU].Color,
-                     Config.Monitors[Config.GPU].ColorSecondary)));
+                Config.Monitors[Config.GPU].ColorSecondary)));
 
         // Disk palette — read (primary) × write (secondary).
         DiskWrite = Win32.CreateSolidBrush(RgbToColorRef(Config.Monitors[Config.DISK].ColorSecondary));
         DiskBlend = Win32.CreateSolidBrush(RgbToColorRef(
             BlendRgb(Config.Monitors[Config.DISK].Color,
-                     Config.Monitors[Config.DISK].ColorSecondary)));
+                Config.Monitors[Config.DISK].ColorSecondary)));
 
         // Network palette — receive (primary) × send (secondary).
         NetSend  = Win32.CreateSolidBrush(RgbToColorRef(Config.Monitors[Config.NETWORK].ColorSecondary));
         NetBlend = Win32.CreateSolidBrush(RgbToColorRef(
             BlendRgb(Config.Monitors[Config.NETWORK].Color,
-                     Config.Monitors[Config.NETWORK].ColorSecondary)));
+                Config.Monitors[Config.NETWORK].ColorSecondary)));
 
         // 13px "Trebuchet MS" — same face as the original WinForms label bitmap
         Font = Win32.CreateFontW(
@@ -254,7 +254,7 @@ internal static unsafe class MonitorRenderer
                 biPlanes      = 1,
                 biBitCount    = 32,
                 biCompression = Win32.BI_RGB,
-                biSizeImage   = (uint)(MonitorState.IconSize * MonitorState.IconSize * 4)
+                biSizeImage   = MonitorState.IconSize * MonitorState.IconSize * 4
             }
         };
         m.HBitmap = Win32.CreateDIBSection(0, &bmi, Win32.DIB_RGB_COLORS, out _, 0, 0);

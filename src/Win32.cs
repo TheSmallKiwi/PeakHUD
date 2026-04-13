@@ -1,16 +1,17 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.Marshalling;
 
 // All Win32 P/Invoke declarations and structs.
 // Uses LibraryImport (not DllImport) for NativeAOT compatibility.
 // All string parameters use StringMarshalling.Utf16 (= WCHAR / W-suffix APIs).
 
+namespace PeakHUD;
+
 internal static partial class Win32
 {
     // ── Constants ────────────────────────────────────────────────────────────
 
-    // Window styles
+    // Window styles 
     public const uint WS_OVERLAPPEDWINDOW = 0x00CF0000;
     public const uint WS_POPUP            = 0x80000000;
     public const uint WS_BORDER           = 0x00800000;
@@ -105,7 +106,7 @@ internal static partial class Win32
     public const int SM_CYSCREEN = 1;
 
     // Cursor
-    public static readonly nint IDC_ARROW = (nint)32512;
+    public static readonly nint IDC_ARROW = 32512;
 
     // Stock objects
     public const int NULL_BRUSH  = 5;
@@ -385,7 +386,7 @@ internal static partial class Win32
     public struct LUID { public uint LowPart; public int HighPart; }
 
     [StructLayout(LayoutKind.Sequential)]
-    public unsafe struct D3DKMT_ADAPTERINFO
+    public struct D3DKMT_ADAPTERINFO
     {
         public uint  hAdapter;
         public LUID  AdapterLuid;
@@ -844,7 +845,7 @@ internal static partial class Win32
 
     [LibraryImport("pdh.dll")]
     public static unsafe partial uint PdhGetFormattedCounterValue(
-        nint hCounter, uint dwFormat, out uint lpdwType, Win32.PDH_FMT_COUNTERVALUE* pValue);
+        nint hCounter, uint dwFormat, out uint lpdwType, PDH_FMT_COUNTERVALUE* pValue);
 
     [LibraryImport("pdh.dll")]
     public static partial uint PdhCloseQuery(nint hQuery);

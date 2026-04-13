@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
+namespace PeakHUD;
 // Per-monitor configuration, persisted to %APPDATA%\PeakHUD\settings.ini.
 // Hand-rolled INI — no external JSON library (System.Text.Json source-gen adds ~300 KB to AOT binary).
 
@@ -43,9 +45,9 @@ internal static class Config
     ];
 
     // Default secondary colors for dual-bar monitors.
-    public const uint DefaultGpuMemColor  = 0x00_B446DC; // purple  (180,  70, 220) — GPU memory
-    public const uint DefaultDiskWrite    = 0x00_50C8C8; // teal    ( 80, 200, 200) — disk write
-    public const uint DefaultNetSend      = 0x00_FF9E3C; // orange  (255, 158,  60) — network send
+    private const uint DefaultGpuMemColor  = 0x00_B446DC; // purple  (180,  70, 220) — GPU memory
+    private const uint DefaultDiskWrite    = 0x00_50C8C8; // teal    ( 80, 200, 200) — disk write
+    private const uint DefaultNetSend      = 0x00_FF9E3C; // orange  (255, 158,  60) — network send
 
     private static void ApplyDefaults()
     {
@@ -137,16 +139,16 @@ internal static class Config
                 case "color":
                 {
                     string hex = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? value[2..] : value;
-                    if (uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber,
-                                      System.Globalization.CultureInfo.InvariantCulture, out uint rgb))
+                    if (uint.TryParse(hex, NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture, out uint rgb))
                         Monitors[section].Color = rgb & 0x00FFFFFFu;
                     break;
                 }
                 case "color_secondary":
                 {
                     string hex = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? value[2..] : value;
-                    if (uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber,
-                                      System.Globalization.CultureInfo.InvariantCulture, out uint rgb))
+                    if (uint.TryParse(hex, NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture, out uint rgb))
                         Monitors[section].ColorSecondary = rgb & 0x00FFFFFFu;
                     break;
                 }

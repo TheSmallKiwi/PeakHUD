@@ -7,6 +7,8 @@
 // I/O system-wide (cache, paging, etc.), producing values 50-100× higher than
 // physical disk activity.
 
+namespace PeakHUD.Monitors;
+
 internal static unsafe class DiskMonitor
 {
     // 30 MB/s floor — bars never pin at 100% from minor background activity.

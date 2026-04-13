@@ -1,6 +1,8 @@
 // RAM utilization via GlobalMemoryStatusEx.
 // dwMemoryLoad is already 0–100; no delta calculation needed.
 
+namespace PeakHUD.Monitors;
+
 internal static class RamMonitor
 {
     public static void Init() { }  // no warm-up needed
@@ -9,6 +11,6 @@ internal static class RamMonitor
     {
         var status = Win32.MEMORYSTATUSEX.Create();
         Win32.GlobalMemoryStatusEx(ref status);
-        return (float)status.dwMemoryLoad;
+        return status.dwMemoryLoad;
     }
 }

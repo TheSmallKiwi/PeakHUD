@@ -1,6 +1,8 @@
 // CPU utilization via GetSystemTimes — ported verbatim from previous implementation.
 // Measures (kernel+user - idle) / (kernel+user) delta between ticks.
 
+namespace PeakHUD.Monitors;
+
 internal static class CpuMonitor
 {
     private static ulong _prevIdle;

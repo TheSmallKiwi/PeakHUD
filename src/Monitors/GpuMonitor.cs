@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+
 
 // GPU utilization + system-wide VRAM via D3DKMTQueryStatistics (gdi32.dll) — same API
 // Task Manager and System Informer use. Struct layout per ProcessHacker's d3dkmt.h.
@@ -6,6 +6,8 @@ using System.Runtime.InteropServices;
 // VRAM: sum BytesResident across all segments where Aperture == 0 (dedicated VRAM only).
 //       Capacity: sum CommitLimit across the same segments.
 // Util: sum RunningTime deltas across all nodes of all adapters, divided by elapsed ticks.
+
+namespace PeakHUD.Monitors;
 
 internal static unsafe class GpuMonitor
 {
@@ -137,9 +139,9 @@ internal static unsafe class GpuMonitor
     }
 
     private static SegmentState[] EnumerateSegments(Win32.D3DKMT_ADAPTERINFO[] adapters,
-                                                    out ulong dedicatedCapacity)
+        out ulong dedicatedCapacity)
     {
-        var   segments          = new System.Collections.Generic.List<SegmentState>();
+        var   segments          = new List<SegmentState>();
         ulong totalDedicatedCap = 0;
 
         foreach (var adapter in adapters)
@@ -169,7 +171,7 @@ internal static unsafe class GpuMonitor
 
     private static NodeState[] EnumerateNodes(Win32.D3DKMT_ADAPTERINFO[] adapters)
     {
-        var nodes = new System.Collections.Generic.List<NodeState>();
+        var nodes = new List<NodeState>();
         foreach (var adapter in adapters)
         {
             for (uint nodeId = 0; nodeId < 64; nodeId++)
