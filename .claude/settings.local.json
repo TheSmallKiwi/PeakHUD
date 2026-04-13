@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(\"C:/Program Files/dotnet/dotnet.exe\" build -c Release)"
-    ]
-  }
-}
