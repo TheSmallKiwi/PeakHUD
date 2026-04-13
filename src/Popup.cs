@@ -230,7 +230,9 @@ internal static unsafe class Popup
         ref var m = ref App.Monitors[monitorIndex];
         string text = monitorIndex == Config.GPU
             ? $"GPU: {m.Current:F1}%  Mem: {m.Current2:F1}%"
-            : $"{App.MonitorNames[monitorIndex]}: {m.Current:F1}%";
+            : monitorIndex == Config.DISK
+                ? $"Read: {DiskMonitor.CurrentReadMBps:F1} MB/s  Write: {DiskMonitor.CurrentWriteMBps:F1} MB/s"
+                : $"{App.MonitorNames[monitorIndex]}: {m.Current:F1}%";
         Win32.SetWindowTextW(_hReadingLabel, text);
     }
 

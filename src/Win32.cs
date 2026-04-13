@@ -820,15 +820,32 @@ internal static partial class Win32
     [LibraryImport("ole32.dll")]
     public static partial void CoTaskMemFree(nint pv);
 
-    // ── ntdll.dll ─────────────────────────────────────────────────────────────
+    // ── pdh.dll ───────────────────────────────────────────────────────────────
 
-    // SystemPerformanceInformation (class 2) — available without elevation.
-    // IoReadTransferCount  is at byte offset  8.
-    // IoWriteTransferCount is at byte offset 16.
-    [LibraryImport("ntdll.dll")]
-    public static unsafe partial int NtQuerySystemInformation(
-        int   SystemInformationClass,
-        void* SystemInformation,
-        uint  SystemInformationLength,
-        out uint ReturnLength);
+    public const uint PDH_FMT_DOUBLE = 0x00000200;
+
+    // PDH_FMT_COUNTERVALUE: CStatus at offset 0, value union at offset 8 (x64 alignment).
+    [StructLayout(LayoutKind.Explicit, Size = 16)]
+    public struct PDH_FMT_COUNTERVALUE
+    {
+        [FieldOffset(0)] public uint   CStatus;
+        [FieldOffset(8)] public double doubleValue;
+        [FieldOffset(8)] public long   largeValue;
+    }
+
+    [LibraryImport("pdh.dll", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial uint PdhOpenQueryW(string? szDataSource, nuint dwUserData, out nint phQuery);
+
+    [LibraryImport("pdh.dll", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial uint PdhAddCounterW(nint hQuery, string szFullCounterPath, nuint dwUserData, out nint phCounter);
+
+    [LibraryImport("pdh.dll")]
+    public static partial uint PdhCollectQueryData(nint hQuery);
+
+    [LibraryImport("pdh.dll")]
+    public static unsafe partial uint PdhGetFormattedCounterValue(
+        nint hCounter, uint dwFormat, out uint lpdwType, Win32.PDH_FMT_COUNTERVALUE* pValue);
+
+    [LibraryImport("pdh.dll")]
+    public static partial uint PdhCloseQuery(nint hQuery);
 }
