@@ -10,10 +10,14 @@ internal unsafe struct MonitorState
     public const int HistoryLen  = 10;
     public const int IconSize    = 32;
 
-    // Ring buffer
+    // Ring buffer (primary)
     public fixed float History[HistoryLen];
     public int         Head;          // next write position
     public float       Current;       // latest reading (0–100)
+
+    // Ring buffer (secondary — GPU memory, same Head index)
+    public fixed float History2[HistoryLen];
+    public float       Current2;
 
     // GDI resources (per-monitor, allocated once in Init)
     public nint HBitmap;             // DIBSection 32×32 32bpp
@@ -37,6 +41,7 @@ internal static class Brushes
     public static nint Green;    // CPU < 50%
     public static nint Yellow;   // CPU 50–74%
     public static nint Red;      // CPU >= 75%
+    public static nint Blue;     // GPU memory
     public static nint Font;     // shared HFONT for icon labels + popup text
 
     // Popup-specific
@@ -51,6 +56,7 @@ internal static class Brushes
         Green  = Win32.CreateSolidBrush(Win32.RGB(0,   205, 0));
         Yellow = Win32.CreateSolidBrush(Win32.RGB(255, 220, 0));
         Red    = Win32.CreateSolidBrush(Win32.RGB(255, 69,  0));
+        Blue   = Win32.CreateSolidBrush(Win32.RGB(30,  144, 255));
 
         // 13px "Trebuchet MS" — same face as the original WinForms label bitmap
         Font = Win32.CreateFontW(
@@ -122,6 +128,15 @@ internal static unsafe class MonitorRenderer
         m.Head = (m.Head + 1) % MonitorState.HistoryLen;
     }
 
+    // Push a secondary reading (e.g. GPU memory) — shares the same Head index.
+    // Must be called after Push() so the same slot is written.
+    public static void Push2(ref MonitorState m, float value)
+    {
+        m.Current2 = value;
+        int prev = (m.Head - 1 + MonitorState.HistoryLen) % MonitorState.HistoryLen;
+        m.History2[prev] = value;
+    }
+
     // Render the 32×32 icon into HBitmap using the shared DC, then push a new HICON
     // to the taskbar via WM_SETICON. Destroys the previous HICON.
     public static void RenderAndPush(ref MonitorState m, nint iconHwnd, nint sharedDC)
@@ -134,6 +149,7 @@ internal static unsafe class MonitorRenderer
         Win32.FillRect(sharedDC, fullRect, Brushes.Bg);
 
         // Draw bar chart (10 bars across 32px)
+        bool isDual = m.ConfigIndex == Config.GPU;
         float barW = MonitorState.IconSize / (float)MonitorState.HistoryLen;
         for (int i = 0; i < MonitorState.HistoryLen; i++)
         {
@@ -143,9 +159,26 @@ internal static unsafe class MonitorRenderer
 
             int bx = (int)(i * barW);
             int bw = (int)((i + 1) * barW) - bx;
-            int by = MonitorState.IconSize - (int)barH;
-            var barRect = new Win32.RECT(bx, by, bx + bw, MonitorState.IconSize);
-            Win32.FillRect(sharedDC, barRect, Brushes.ForValue(val));
+
+            if (isDual)
+            {
+                // Left half: GPU utilization; right half: GPU memory
+                int leftW = Math.Max(1, bw / 2);
+
+                int by = MonitorState.IconSize - (int)barH;
+                Win32.FillRect(sharedDC, new Win32.RECT(bx, by, bx + leftW, MonitorState.IconSize), Brushes.ForValue(val));
+
+                float val2  = m.History2[(m.Head + i) % MonitorState.HistoryLen];
+                float barH2 = MonitorState.IconSize * (val2 / 100f);
+                if (barH2 < 1f) barH2 = 1f;
+                int by2 = MonitorState.IconSize - (int)barH2;
+                Win32.FillRect(sharedDC, new Win32.RECT(bx + leftW, by2, bx + bw, MonitorState.IconSize), Brushes.Blue);
+            }
+            else
+            {
+                int by = MonitorState.IconSize - (int)barH;
+                Win32.FillRect(sharedDC, new Win32.RECT(bx, by, bx + bw, MonitorState.IconSize), Brushes.ForValue(val));
+            }
         }
 
         // Optionally draw label text ("CPU", "RAM", etc.)
@@ -186,4 +219,9 @@ internal static unsafe class MonitorRenderer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float HistoryAt(ref MonitorState m, int i)
         => m.History[(m.Head + i) % MonitorState.HistoryLen];
+
+    // Helper: read the i-th secondary history value in chronological order.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static float HistoryAt2(ref MonitorState m, int i)
+        => m.History2[(m.Head + i) % MonitorState.HistoryLen];
 }

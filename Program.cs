@@ -211,6 +211,8 @@ internal static unsafe class Program
             };
 
             MonitorRenderer.Push(ref App.Monitors[i], value);
+            if (i == Config.GPU)
+                MonitorRenderer.Push2(ref App.Monitors[i], GpuMonitor.ReadMemory());
             MonitorRenderer.RenderAndPush(ref App.Monitors[i], App.IconHwnds[i], App.SharedDC);
         }
 
@@ -238,6 +240,7 @@ internal static unsafe class Program
         if (Brushes.Green  != 0) Win32.DeleteObject(Brushes.Green);
         if (Brushes.Yellow != 0) Win32.DeleteObject(Brushes.Yellow);
         if (Brushes.Red    != 0) Win32.DeleteObject(Brushes.Red);
+        if (Brushes.Blue   != 0) Win32.DeleteObject(Brushes.Blue);
         if (Brushes.Font   != 0) Win32.DeleteObject(Brushes.Font);
     }
 }

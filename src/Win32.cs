@@ -354,6 +354,14 @@ internal static partial class Win32
     }
 
     // D3DKMT structs for GPU utilization via gdi32.dll (same as Task Manager)
+
+    // D3DKMT_MEMORY_SEGMENT_GROUP values for D3DKMTQueryVideoMemoryInfo
+    public const uint D3DKMT_MEMORY_SEGMENT_GROUP_LOCAL     = 0; // dedicated VRAM
+    public const uint D3DKMT_MEMORY_SEGMENT_GROUP_NON_LOCAL = 1; // shared system memory
+
+    // D3DKMT_QUERYSTATISTICS_TYPE value for segment memory stats
+    public const uint D3DKMT_QUERYSTATISTICS_SEGMENT = 3;
+
     [StructLayout(LayoutKind.Sequential)]
     public struct LUID { public uint LowPart; public int HighPart; }
 
@@ -376,36 +384,85 @@ internal static partial class Win32
     // D3DKMT_QUERYSTATISTICS_TYPE enum values (d3dkmthk.h)
     public const uint D3DKMT_QUERYSTATISTICS_NODE = 5; // not 6 — 6 is PROCESS_NODE
 
-    [StructLayout(LayoutKind.Sequential)]
-    public struct D3DKMT_QUERYSTATISTICS_QUERY_NODE
-    {
-        public uint NodeId;
-    }
-
-    // Empirically confirmed via diagnostic dump: RunningTime is at offset 8 within the result.
-    // Offset 8 held 0x000000116C197BCD (75B 100-ns ticks) while all other probed offsets were 0.
-    [StructLayout(LayoutKind.Explicit)]
-    public struct D3DKMT_QUERYSTATISTICS_NODE_INFORMATION
-    {
-        [FieldOffset(8)] public ulong RunningTime; // 100-ns ticks the engine was busy
-    }
-
-    // Minimal union — only the Node variant we use
-    [StructLayout(LayoutKind.Explicit, Size = 2048)]
-    public struct D3DKMT_QUERYSTATISTICS_RESULT
-    {
-        [FieldOffset(0)] public D3DKMT_QUERYSTATISTICS_NODE_INFORMATION NodeInformation;
-    }
-
-    // No Padding field — the C struct has Type(4) + LUID(8) + QueryNode(4) + Result(2048)
-    // with Result naturally aligned at offset 16. An extra uint here shifts Result by 4.
-    [StructLayout(LayoutKind.Sequential)]
+    // D3DKMT_QUERYSTATISTICS layout (x64, Win8+), reverse-engineered from ProcessHacker's
+    // d3dkmt.h and verified against System Informer's gpumon.c:
+    //
+    //   offset 0   Type (ULONG)
+    //   offset 4   AdapterLuid (LUID, 8 bytes)
+    //   offset 12  pad (4 bytes — HANDLE below is 8-byte aligned)
+    //   offset 16  hProcess (HANDLE; leave NULL for SEGMENT/NODE system-wide queries)
+    //   offset 24  QueryResult union (~776-800 bytes — varies by Windows version)
+    //              For Type=SEGMENT: D3DKMT_QUERYSTATISTICS_SEGMENT_INFORMATION, with:
+    //                +0  CommitLimit   (ULONG64)
+    //                +8  BytesCommitted(ULONG64)
+    //                +16 BytesResident (ULONG64) ← matches Task Manager
+    //                +40 Aperture      (ULONG)   — 0 = dedicated VRAM, 1 = shared/aperture
+    //              For Type=NODE: D3DKMT_QUERYSTATISTICS_NODE_INFORMATION, whose first
+    //              member GlobalInformation.RunningTime is at +0 (LARGE_INTEGER).
+    //   offset 24+sizeof(QueryResult)  Trailing input union (ULONG SegmentId/NodeId)
+    //
+    // The trailing input union's offset varies because AdapterInformation's internal pad
+    // shifts slightly between Windows versions. We write the id at a dense sweep of
+    // candidate offsets; Windows reads from its one expected offset, and the other writes
+    // land in AdapterInformation's reserved bytes (never used by SEGMENT/NODE queries).
+    [StructLayout(LayoutKind.Explicit, Size = 1024)]
     public struct D3DKMT_QUERYSTATISTICS
     {
-        public uint  Type;
-        public LUID  AdapterLuid;
-        public D3DKMT_QUERYSTATISTICS_QUERY_NODE QueryNode;
-        public D3DKMT_QUERYSTATISTICS_RESULT     Result;
+        [FieldOffset(0)]  public uint  Type;
+        [FieldOffset(4)]  public LUID  AdapterLuid;
+        [FieldOffset(16)] public nint  hProcess;              // NULL for system-wide SEGMENT/NODE
+
+        // QueryResult union (struct offset 24). Fields at union-relative offsets 0/8/16/40.
+        [FieldOffset(24)] public ulong SegmentCommitLimit;    // segment: +0
+        [FieldOffset(32)] public ulong SegmentBytesCommitted; // segment: +8
+        [FieldOffset(40)] public ulong SegmentBytesResident;  // segment: +16 (TM parity)
+        [FieldOffset(64)] public uint  SegmentAperture;       // segment: +40 (0=dedicated)
+        [FieldOffset(24)] public ulong NodeRunningTime;       // node: +0 (GlobalInfo.RunningTime)
+
+        // Trailing input union — sweep of candidate offsets from 776 to 880 (4-byte stride).
+        // One of these lands where Windows expects the input SegmentId/NodeId.
+        [FieldOffset(776)] public uint QueryId_776;
+        [FieldOffset(780)] public uint QueryId_780;
+        [FieldOffset(784)] public uint QueryId_784;
+        [FieldOffset(788)] public uint QueryId_788;
+        [FieldOffset(792)] public uint QueryId_792;
+        [FieldOffset(796)] public uint QueryId_796;
+        [FieldOffset(800)] public uint QueryId_800;
+        [FieldOffset(804)] public uint QueryId_804;
+        [FieldOffset(808)] public uint QueryId_808;
+        [FieldOffset(812)] public uint QueryId_812;
+        [FieldOffset(816)] public uint QueryId_816;
+        [FieldOffset(820)] public uint QueryId_820;
+        [FieldOffset(824)] public uint QueryId_824;
+        [FieldOffset(828)] public uint QueryId_828;
+        [FieldOffset(832)] public uint QueryId_832;
+        [FieldOffset(836)] public uint QueryId_836;
+        [FieldOffset(840)] public uint QueryId_840;
+        [FieldOffset(844)] public uint QueryId_844;
+        [FieldOffset(848)] public uint QueryId_848;
+        [FieldOffset(852)] public uint QueryId_852;
+        [FieldOffset(856)] public uint QueryId_856;
+        [FieldOffset(860)] public uint QueryId_860;
+        [FieldOffset(864)] public uint QueryId_864;
+        [FieldOffset(868)] public uint QueryId_868;
+        [FieldOffset(872)] public uint QueryId_872;
+        [FieldOffset(876)] public uint QueryId_876;
+        [FieldOffset(880)] public uint QueryId_880;
+    }
+
+    // GPU video memory info — process-scoped (hProcess must be a real process handle).
+    // Not usable for system-wide VRAM. Kept for reference.
+    [StructLayout(LayoutKind.Sequential)]
+    public struct D3DKMT_QUERYVIDEOMEMORYINFO
+    {
+        public nint  hProcess;
+        public uint  hAdapter;
+        public uint  MemorySegmentGroup;
+        public ulong Budget;
+        public ulong CurrentUsage;
+        public ulong CurrentReservation;
+        public ulong AvailableForReservation;
+        public uint  Version;
     }
 
     // ── kernel32.dll ─────────────────────────────────────────────────────────
@@ -638,11 +695,33 @@ internal static partial class Win32
 
     // ── gdi32.dll — D3DKMT (GPU utilization) ─────────────────────────────────
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct D3DKMT_OPENADAPTERFROMLUID
+    {
+        public LUID AdapterLuid;
+        public uint hAdapter;       // output: opened adapter handle
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct D3DKMT_CLOSEADAPTER
+    {
+        public uint hAdapter;
+    }
+
     [LibraryImport("gdi32.dll")]
     public static unsafe partial int D3DKMTEnumAdapters2(D3DKMT_ENUMADAPTERS2* pParams);
 
     [LibraryImport("gdi32.dll")]
+    public static partial int D3DKMTOpenAdapterFromLuid(ref D3DKMT_OPENADAPTERFROMLUID pData);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial int D3DKMTCloseAdapter(ref D3DKMT_CLOSEADAPTER pData);
+
+    [LibraryImport("gdi32.dll")]
     public static partial int D3DKMTQueryStatistics(ref D3DKMT_QUERYSTATISTICS pData);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial int D3DKMTQueryVideoMemoryInfo(ref D3DKMT_QUERYVIDEOMEMORYINFO pData);
 
     // ── shell32.dll ──────────────────────────────────────────────────────────
 

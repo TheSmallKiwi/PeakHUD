@@ -194,7 +194,9 @@ internal static unsafe class Popup
     private static void UpdateReadingLabel(int monitorIndex)
     {
         ref var m = ref App.Monitors[monitorIndex];
-        string text = $"{App.MonitorNames[monitorIndex]}: {m.Current:F1}%";
+        string text = monitorIndex == Config.GPU
+            ? $"GPU: {m.Current:F1}%  Mem: {m.Current2:F1}%"
+            : $"{App.MonitorNames[monitorIndex]}: {m.Current:F1}%";
         Win32.SetWindowTextW(_hReadingLabel, text);
     }
 
@@ -320,6 +322,7 @@ internal static unsafe class Popup
         var chartRect = new Win32.RECT(0, chartTop, chartW, chartBot);
         Win32.FillRect(hdc, chartRect, Brushes.Bg);
 
+        bool isDual = monitorIndex == Config.GPU;
         float barW = chartW / (float)MonitorState.HistoryLen;
         for (int i = 0; i < MonitorState.HistoryLen; i++)
         {
@@ -329,10 +332,26 @@ internal static unsafe class Popup
 
             int bx = (int)(i * barW) + 1;
             int bw = (int)((i + 1) * barW) - bx - 1;
-            int by = chartBot - (int)barH;
-            Win32.FillRect(hdc,
-                new Win32.RECT(bx, by, bx + bw, chartBot),
-                Brushes.ForValue(val));
+
+            if (isDual)
+            {
+                // Left half: GPU utilization; right half: GPU memory
+                int leftW = Math.Max(1, bw / 2);
+
+                int by = chartBot - (int)barH;
+                Win32.FillRect(hdc, new Win32.RECT(bx, by, bx + leftW, chartBot), Brushes.ForValue(val));
+
+                float val2  = MonitorRenderer.HistoryAt2(ref m, i);
+                float barH2 = chartH * (val2 / 100f);
+                if (barH2 < 1f) barH2 = 1f;
+                int by2 = chartBot - (int)barH2;
+                Win32.FillRect(hdc, new Win32.RECT(bx + leftW, by2, bx + bw, chartBot), Brushes.Blue);
+            }
+            else
+            {
+                int by = chartBot - (int)barH;
+                Win32.FillRect(hdc, new Win32.RECT(bx, by, bx + bw, chartBot), Brushes.ForValue(val));
+            }
         }
     }
 
